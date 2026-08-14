@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal de Gestión de Changes y Capacidad - Nestlé</title>
+    
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- SheetJS CDN (Excel Export & Import) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <!-- FontAwesome 6 CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="p-3 md:p-5 bg-slate-50 text-slate-900 min-h-screen">
+
+    <!-- ========================================== -->
+    <!-- HEADER EJECUTIVO (TODO EN UNA SOLA FILA)  -->
+    <!-- ========================================== -->
+    <header class="bg-white px-4 py-3 rounded-2xl shadow-sm border border-slate-200 mb-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3">
+        <!-- Logo y Título -->
+        <div class="flex items-center gap-3 shrink-0">
+            <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
+                <i class="fa-solid fa-layer-group text-lg"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-lg font-black text-slate-800 tracking-tight whitespace-nowrap">Portal de Gestión de Changes</h1>
+                    <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">v3.8 FIX</span>
+                </div>
+                <div class="flex items-center gap-2 text-[11px] text-slate-500">
+                    <span id="indicadorSync" class="status-pill-live px-2 py-0.2 rounded-full text-[10px] font-semibold flex items-center gap-1.5 shadow-sm">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                        <i class="fa-solid fa-wifi text-emerald-600"></i> En línea
+                    </span>
+                    <span>&bull;</span>
+                    <span>Capacidad: 160h/mes &bull; Límite: &le; 30h por Change</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botones de Acción en una sola fila compacta -->
+        <div class="flex items-center gap-2 flex-wrap xl:flex-nowrap w-full xl:w-auto justify-start xl:justify-end shrink-0">
+            <!-- Selector de Mes -->
+            <div class="flex items-center bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 shrink-0">
+                <i class="fa-solid fa-calendar text-slate-500 text-[11px] mr-1.5"></i>
+                <label for="selectorMes" class="text-xs font-bold text-slate-600 mr-1.5">Periodo:</label>
+                <input type="month" id="selectorMes" class="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer">
+            </div>
+
+            <!-- Botón Sincronizar -->
+            <button onclick="sincronizarConSharePoint()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300 shadow-sm transition-all whitespace-nowrap shrink-0">
+                <i class="fa-solid fa-rotate text-blue-600"></i> Sincronizar
+            </button>
+
+            <!-- Botón Upload Excel Backlog -->
+            <button onclick="abrirModalUploadExcel()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all whitespace-nowrap shrink-0">
+                <i class="fa-solid fa-file-arrow-up"></i> Cargar Backlog (Excel)
+            </button>
+
+            <!-- Botón Exportar Excel -->
+            <button onclick="exportarExcel()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all whitespace-nowrap shrink-0">
+                <i class="fa-solid fa-file-excel"></i> Exportar Excel
+            </button>
+
+            <!-- Botón Nueva Change -->
+            <button onclick="abrirModalNuevaChange()" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/25 whitespace-nowrap shrink-0">
+                <i class="fa-solid fa-plus"></i> Nueva Change
+            </button>
+        </div>
+    </header>
+
+    <!-- ALERTA DE SOBRECAPACIDAD (SI EXCEDE 160H) -->
+    <div id="alertaSobrecapacidad" class="hidden mb-4 p-3 rounded-xl badge-overcapacity flex items-center justify-between shadow-sm">
+        <div class="flex items-center gap-2.5">
+            <i class="fa-solid fa-triangle-exclamation text-lg text-rose-600"></i>
+            <div>
+                <h4 class="font-bold text-xs text-rose-900">¡Alerta de Capacidad Mensual Excedida!</h4>
+                <p class="text-[11px] text-rose-700">El total supera las 160h asignadas al mes. Exceso: <b id="txtExcesoHoras">0 h</b>.</p>
+            </div>
+        </div>
+        <span class="text-[11px] font-bold px-2.5 py-1 bg-rose-600 text-white rounded-lg">Priorización Requerida</span>
+    </div>
+
+    <!-- TARJETAS DE CAPACIDAD -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        
+        <!-- Tarjeta 1: Gauge de Capacidad Mensual (160h) -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
+            <div class="flex justify-between items-center mb-1">
+                <div>
+                    <h3 class="font-extrabold text-slate-800 text-xs">Capacidad Mensual</h3>
+                    <p class="text-[10px] text-slate-400 font-medium">Bolsa del equipo de Mejoras Continuas</p>
+                </div>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100">Meta: 160h</span>
+            </div>
+
+            <div class="relative w-44 h-20 mx-auto my-1 flex items-center justify-center">
+                <canvas id="gaugeCapacidade"></canvas>
+            </div>
+
+            <div class="grid grid-cols-2 text-center border-t border-slate-100 pt-2 mt-1">
+                <div class="border-r border-slate-100 pr-2">
+                    <span class="text-[10px] font-semibold text-slate-500 block uppercase">Consumido</span>
+                    <span id="txtHorasConsumidas" class="font-black text-lg text-slate-800">0 h</span>
+                </div>
+                <div class="pl-2">
+                    <span class="text-[10px] font-semibold text-slate-500 block uppercase">Disponible</span>
+                    <span id="txtHorasResta" class="font-black text-lg text-emerald-600">160 h</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tarjeta 2: Regla Fundamental de 30 Horas (Solo <= 30h) -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-extrabold text-slate-800 text-xs">Regla: Máximo 30h por Change</h3>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Aceptable: &le; 30h</span>
+                </div>
+
+                <div class="space-y-3">
+                    <div>
+                        <div class="flex justify-between text-xs font-bold mb-1">
+                            <span class="text-emerald-700 flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-500 text-xs"></i> Small Enhancements (&le; 30h)
+                            </span>
+                            <span id="countSmall" class="text-slate-800 font-mono">0 changes (0h)</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div id="barSmall" class="bg-emerald-500 h-full w-full rounded-full transition-all duration-500"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100 mt-2">
+                <p class="text-[11px] text-slate-600 leading-tight">
+                    <i class="fa-solid fa-shield-check text-emerald-600 mr-1"></i> <b>Regla del equipo:</b> Toda change debe ser de <b>máximo 30 horas</b>. Requerimientos de más de 30h son proyectos y son derivados a otras áreas.
+                </p>
+            </div>
+        </div>
+
+        <!-- Tarjeta 3: Horas Aprobadas por Producto -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="font-extrabold text-slate-800 text-xs">Distribución por Producto</h3>
+                <span class="text-[10px] font-bold text-slate-500"><span id="txtTotalChanges">0</span> Changes</span>
+            </div>
+
+            <div id="containerProductos" class="space-y-1.5 overflow-y-auto max-h-28 pr-1 custom-scroll">
+                <p class="text-xs text-slate-400 py-3 text-center">Cargando productos...</p>
+            </div>
+
+            <div class="text-right pt-1.5 border-t border-slate-100">
+                <span class="text-[9px] text-slate-400 italic">* Calculado según Horas Aprobadas</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========================================================== -->
+    <!-- BARRA DE PESTAÑAS Y FILTROS (ALINEACIÓN EN UNA SOLA FILA)  -->
+    <!-- ========================================================== -->
+    <div class="bg-white px-4 py-2.5 rounded-2xl shadow-sm border border-slate-200 mb-4">
+        <div class="flex flex-col 2xl:flex-row justify-between items-start 2xl:items-center gap-3">
+            
+            <!-- Pestañas de Vista (Izquierda) -->
+            <div class="flex items-center gap-1 border-b 2xl:border-b-0 border-slate-200 pb-1.5 2xl:pb-0 shrink-0 overflow-x-auto w-full 2xl:w-auto">
+                <button data-view="kanban" class="tab-btn py-1.5 px-3 font-bold text-xs text-blue-600 border-b-2 border-blue-600 flex items-center gap-1.5 transition-all whitespace-nowrap">
+                    <i class="fa-solid fa-table-columns"></i> Tablero Kanban
+                </button>
+                <button data-view="fases" class="tab-btn py-1.5 px-3 font-semibold text-xs text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center gap-1.5 transition-all whitespace-nowrap">
+                    <i class="fa-solid fa-list-check"></i> Matriz de Fases
+                </button>
+                <button data-view="dashboard" class="tab-btn py-1.5 px-3 font-semibold text-xs text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center gap-1.5 transition-all whitespace-nowrap">
+                    <i class="fa-solid fa-chart-pie"></i> Dashboard
+                </button>
+                <button data-view="tabla" class="tab-btn py-1.5 px-3 font-semibold text-xs text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center gap-1.5 transition-all whitespace-nowrap">
+                    <i class="fa-solid fa-table-list"></i> Backlog Completo
+                </button>
+            </div>
+
+            <!-- Filtros Compactos (Derecha) -->
+            <div class="flex items-center gap-1.5 flex-wrap 2xl:flex-nowrap w-full 2xl:w-auto justify-start 2xl:justify-end shrink-0">
+                <!-- Buscador -->
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-[10px]"></i>
+                    <input type="text" id="inpBuscar" placeholder="Buscar..." class="pl-7 pr-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs w-32 focus:w-44 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                </div>
+
+                <!-- Solicitante -->
+                <select id="filtroSolicitante" class="py-1 px-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 outline-none max-w-[130px] truncate cursor-pointer">
+                    <option value="todos">Solicitantes</option>
+                </select>
+
+                <!-- Business Service -->
+                <select id="filtroBusinessService" class="py-1 px-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 outline-none max-w-[130px] truncate cursor-pointer">
+                    <option value="todos">Business Services</option>
+                </select>
+
+                <!-- Producto -->
+                <select id="filtroProducto" class="py-1 px-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 outline-none max-w-[120px] truncate cursor-pointer">
+                    <option value="todos">Productos</option>
+                </select>
+
+                <!-- Estado -->
+                <select id="filtroStatus" class="py-1 px-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 outline-none cursor-pointer">
+                    <option value="todos">Estados</option>
+                    <option value="Aprovado">Aprobado</option>
+                    <option value="Pendente">Pendiente</option>
+                    <option value="Rejeitado">Rechazado</option>
+                </select>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- SECCIÓN 1: KANBAN LIMPIO Y CON DRAG & DROP ROBUSTO      -->
+    <!-- ======================================================= -->
+    <div id="secaoKanban" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2.5 overflow-x-auto pb-6">
+        
+        <!-- 1. Abertura -->
+        <div id="kanban-col-Abertura" class="bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 kanban-col flex flex-col" data-fase="Abertura">
+            <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none">
+                <span class="font-extrabold text-[11px] text-slate-700 uppercase">1. Abertura</span>
+                <span id="badge-Abertura" class="bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </div>
+            <div id="col-Abertura" class="space-y-2 flex-1 min-h-[350px]"></div>
+        </div>
+
+        <!-- 2. Reunião -->
+        <div id="kanban-col-Reuniao" class="bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 kanban-col flex flex-col" data-fase="Reuniao">
+            <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none">
+                <span class="font-extrabold text-[11px] text-slate-700 uppercase">2. Reunião</span>
+                <span id="badge-Reuniao" class="bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </div>
+            <div id="col-Reuniao" class="space-y-2 flex-1 min-h-[350px]"></div>
+        </div>
+
+        <!-- 3. Análise -->
+        <div id="kanban-col-Analise" class="bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 kanban-col flex flex-col" data-fase="Analise">
+            <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none">
+                <span class="font-extrabold text-[11px] text-slate-700 uppercase">3. Análise</span>
+                <span id="badge-Analise" class="bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </div>
+            <div id="col-Analise" class="space-y-2 flex-1 min-h-[350px]"></div>
+        </div>
+
+        <!-- 4. Comitê -->
+        <div id="kanban-col-Comite" class="bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 kanban-col flex flex-col" data-fase="Comite">
+            <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none">
+                <span class="font-extrabold text-[11px] text-slate-700 uppercase">4. Comitê</span>
+                <span id="badge-Comite" class="bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </div>
+            <div id="col-Comite" class="space-y-2 flex-1 min-h-[350px]"></div>
+        </div>
+
+        <!-- 5. Apresentação -->
+        <div id="kanban-col-Apresentacao" class="bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 kanban-col flex flex-col" data-fase="Apresentacao">
+            <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none">
+                <span class="font-extrabold text-[11px] text-slate-700 uppercase">5. Apresentação</span>
+                <span id="badge-Apresentacao" class="bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </div>
+            <div id="col-Apresentacao" class="space-y-2 flex-1 min-h-[350px]"></div>
+        </div>
+
+        <!-- 6. Aprovação -->
+        <div id="kanban-col-Aprovacao" class="bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 kanban-col flex flex-col" data-fase="Aprovacao">
+            <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none">
+                <span class="font-extrabold text-[11px] text-slate-700 uppercase">6. Aprovação</span>
+                <span id="badge-Aprovacao" class="bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </div>
+            <div id="col-Aprovacao" class="space-y-2 flex-1 min-h-[350px]"></div>
+        </div>
+
+        <!-- 7. Execução -->
+        <div id="kanban-col-Execucao" class="bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 kanban-col flex flex-col" data-fase="Execucao">
+            <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none">
+                <span class="font-extrabold text-[11px] text-slate-700 uppercase">7. Execução</span>
+                <span id="badge-Execucao" class="bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </div>
+            <div id="col-Execucao" class="space-y-2 flex-1 min-h-[350px]"></div>
+        </div>
+
+        <!-- 8. Concluída -->
+        <div id="kanban-col-Concluida" class="bg-emerald-50/90 p-2.5 rounded-2xl border border-emerald-200 kanban-col flex flex-col" data-fase="Concluida">
+            <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-emerald-200 pointer-events-none">
+                <span class="font-extrabold text-[11px] text-emerald-800 uppercase">8. Concluída</span>
+                <span id="badge-Concluida" class="bg-emerald-200 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </div>
+            <div id="col-Concluida" class="space-y-2 flex-1 min-h-[350px]"></div>
+        </div>
+
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- SECCIÓN 2: MATRIZ TABULAR DE FASES Y CHECKPOINTS        -->
+    <!-- ======================================================= -->
+    <div id="secaoFases" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+        <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+            <div>
+                <h3 class="font-bold text-slate-800 text-xs">Matriz de Checkpoints por Fase</h3>
+                <p class="text-[11px] text-slate-500">Haz clic en cualquier checkpoint para registrar o alternar la fecha de conclusión.</p>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-700">
+                <thead class="bg-slate-100 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                    <tr>
+                        <th class="p-2.5">Change / RITM</th>
+                        <th class="p-2.5">Solicitante & Servicio</th>
+                        <th class="p-2.5">Producto / Ing.</th>
+                        <th class="p-2.5 text-center">1. Abertura</th>
+                        <th class="p-2.5 text-center">2. Reunião</th>
+                        <th class="p-2.5 text-center">3. Análise</th>
+                        <th class="p-2.5 text-center">4. Comitê</th>
+                        <th class="p-2.5 text-center">5. Apresentação</th>
+                        <th class="p-2.5 text-center">6. Aprovação</th>
+                        <th class="p-2.5 text-center">7. Execução</th>
+                        <th class="p-2.5 text-center">8. Conclusão</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyFases" class="divide-y divide-slate-100"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- SECCIÓN 3: DASHBOARD ANALÍTICO (GRÁFICOS CHART.JS)      -->
+    <!-- ======================================================= -->
+    <div id="secaoDashboard" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+            <h3 class="font-bold text-slate-800 text-xs mb-3"><i class="fa-solid fa-chart-column text-blue-600 mr-1.5"></i>Horas Aprobadas por Producto</h3>
+            <div class="relative h-64">
+                <canvas id="chartProductosDashboard"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+            <h3 class="font-bold text-slate-800 text-xs mb-3"><i class="fa-solid fa-chart-pie text-emerald-600 mr-1.5"></i>Distribución de Changes por Fase</h3>
+            <div class="relative h-64">
+                <canvas id="chartFasesDashboard"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- SECCIÓN 4: TABLA COMPLETA DE BACKLOG                   -->
+    <!-- ======================================================= -->
+    <div id="secaoTabla" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-700">
+                <thead class="bg-slate-100 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                    <tr>
+                        <th class="p-2.5">Change</th>
+                        <th class="p-2.5">Solicitante</th>
+                        <th class="p-2.5">Business Service</th>
+                        <th class="p-2.5">Producto</th>
+                        <th class="p-2.5">Descripción</th>
+                        <th class="p-2.5 text-center">Horas Est.</th>
+                        <th class="p-2.5 text-center">Horas Apr.</th>
+                        <th class="p-2.5 text-center">Tipo</th>
+                        <th class="p-2.5 text-center">Fase Actual</th>
+                        <th class="p-2.5 text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyBacklog" class="divide-y divide-slate-100"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- MODAL DE CREACIÓN / EDICIÓN DE CHANGE                   -->
+    <!-- ======================================================= -->
+    <div id="modalChange" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-3 z-50">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto p-5 border border-slate-200 custom-scroll">
+            
+            <div class="flex justify-between items-center pb-3 border-b border-slate-200 mb-4">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                        <i class="fa-solid fa-file-pen"></i>
+                    </div>
+                    <div>
+                        <h3 id="modalTitulo" class="text-base font-black text-slate-800">Detalles de la Change</h3>
+                        <p class="text-[11px] text-slate-500 font-medium">Solicitante, servicio, estimación (&le; 30h) y cronograma</p>
+                    </div>
+                </div>
+                <button onclick="fecharModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="formChange" onsubmit="salvarFormularioChange(event)" class="space-y-4">
+                <input type="hidden" id="spItemId">
+
+                <!-- Fila 1: Solicitante & Business Service -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-blue-50/50 border border-blue-100 rounded-xl">
+                    <div>
+                        <label class="block text-xs font-extrabold text-blue-900 mb-1">
+                            <i class="fa-solid fa-user-tag mr-1 text-blue-600"></i> Solicitante (¿Quién solicita?) *
+                        </label>
+                        <input type="text" id="inpSolicitante" required placeholder="Nombre del solicitante" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:border-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-extrabold text-blue-900 mb-1">
+                            <i class="fa-solid fa-briefcase mr-1 text-blue-600"></i> Business Service (Servicio de Negocio) *
+                        </label>
+                        <input type="text" id="inpBusinessService" required placeholder="Ej: E-Commerce, Supply Chain, CRM, Facturación..." class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:border-blue-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Fila 2: Números de Identificación y Producto -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Número de Change *</label>
+                        <input type="text" id="inpChange" required placeholder="CHG0012345" class="w-full p-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:border-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">RITM / Requerimiento</label>
+                        <input type="text" id="inpRitm" placeholder="RITM0012345" class="w-full p-2 border border-slate-300 rounded-lg text-xs text-slate-800 focus:border-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Producto / Línea *</label>
+                        <input type="text" id="inpProduto" required placeholder="Ej: Nescafé, Purina..." class="w-full p-2 border border-slate-300 rounded-lg text-xs text-slate-800 focus:border-blue-500 outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Descripción / Resumen de la Solicitud</label>
+                    <textarea id="inpDescricao" rows="2" class="w-full p-2 border border-slate-300 rounded-lg text-xs text-slate-800 focus:border-blue-500 outline-none" placeholder="Describe brevemente el objetivo y alcance de esta change..."></textarea>
+                </div>
+
+                <!-- PASOS DE IMPLEMENTACIÓN POR FASE -->
+                <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-1.5">
+                        <div>
+                            <h4 class="font-extrabold text-xs uppercase text-blue-800 flex items-center gap-1.5">
+                                <i class="fa-solid fa-list-ol"></i> Pasos de Implementación por Fase
+                            </h4>
+                            <p class="text-[10px] text-slate-500">Acción a realizar, tiempo en horas y fecha tentativa.</p>
+                        </div>
+                        <button type="button" onclick="agregarFilaPaso()" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition-all self-start sm:self-auto">
+                            <i class="fa-solid fa-plus"></i> Agregar Fase / Paso
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs table-pasos">
+                            <thead class="bg-slate-200 text-slate-700 font-bold uppercase text-[10px]">
+                                <tr>
+                                    <th class="p-1.5 w-1/4">Fase</th>
+                                    <th class="p-1.5 w-2/5">¿Cuál acción? (Tarea concreta)</th>
+                                    <th class="p-1.5 w-16 text-center">Horas</th>
+                                    <th class="p-1.5 w-28">Fecha Tentativa</th>
+                                    <th class="p-1.5 w-8 text-center"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyPasosImplementacion" class="divide-y divide-slate-200 bg-white"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ESTIMACIÓN Y CONTROL DE 30H -->
+                <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Ingeniero Asignado</label>
+                            <input type="text" id="inpEngenheiro" placeholder="Desarrollador / Analista" class="w-full p-2 border border-slate-300 rounded-lg text-xs text-slate-800 focus:border-blue-500 outline-none">
+                        </div>
+
+                        <div class="bg-white p-2.5 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Total Horas Estimadas *</label>
+                            <input type="number" id="inpHorasEst" oninput="actualizarClassificacaoModal()" step="0.5" min="0" required class="w-full p-1.5 border border-slate-300 rounded-lg text-xs font-black text-slate-800 focus:border-blue-500 outline-none" value="0">
+                            <div class="mt-1">
+                                <span id="badgeClassificacaoModal" class="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                    SMALL ENHANCEMENT (&le; 30h)
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-2.5 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Horas Aprobadas Comité</label>
+                            <input type="number" id="inpHorasApr" step="0.5" min="0" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs font-black text-blue-700 focus:border-blue-500 outline-none" value="0">
+                            <span class="text-[10px] text-slate-400 block mt-0.5">Descuento de la capacidad de 160h.</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Entendimiento Técnico / Arquitectura</label>
+                            <textarea id="inpAnalise" rows="2" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs" placeholder="Solución técnica, endpoints..."></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Plan de Rollback / Reversión</label>
+                            <textarea id="inpRollback" rows="2" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs" placeholder="Cómo revertir en contingencia..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- APROBACIÓN DEL PO -->
+                <div class="p-3 bg-amber-50/60 border border-amber-200 rounded-xl">
+                    <h4 class="font-extrabold text-xs uppercase text-amber-900 mb-2 flex items-center gap-1.5">
+                        <i class="fa-solid fa-user-check"></i> Aprobación de Producto (PO / Aprobador)
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-700 mb-0.5">Nombre Aprobador</label>
+                            <input type="text" id="inpAprovadorNome" placeholder="Nombre completo" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-700 mb-0.5">Email Aprobador</label>
+                            <input type="email" id="inpAprovadorEmail" placeholder="aprobador@nestle.com" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-700 mb-0.5">Estado</label>
+                            <select id="inpStatusAprov" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs font-bold">
+                                <option value="Pendente">Pendiente</option>
+                                <option value="Aprovado">Aprobado</option>
+                                <option value="Rejeitado">Rechazado</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FECHAS DE LAS 8 FASES -->
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <h4 class="font-extrabold text-xs uppercase text-slate-700 mb-2 flex items-center gap-1.5">
+                        <i class="fa-solid fa-calendar-days text-blue-600"></i> Cronograma de Fases (Fechas Efectivas)
+                    </h4>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">1. Abertura</label><input type="date" id="d1" class="w-full p-1 border rounded-lg text-xs"></div>
+                        <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">2. Reunião</label><input type="date" id="d2" class="w-full p-1 border rounded-lg text-xs"></div>
+                        <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">3. Análise</label><input type="date" id="d3" class="w-full p-1 border rounded-lg text-xs"></div>
+                        <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">4. Comitê</label><input type="date" id="d4" class="w-full p-1 border rounded-lg text-xs"></div>
+                        <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">5. Apresentação</label><input type="date" id="d5" class="w-full p-1 border rounded-lg text-xs"></div>
+                        <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">6. Aprovação</label><input type="date" id="d6" class="w-full p-1 border rounded-lg text-xs"></div>
+                        <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">7. Execução</label><input type="date" id="d7" class="w-full p-1 border rounded-lg text-xs"></div>
+                        <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">8. Conclusão</label><input type="date" id="d8" class="w-full p-1 border rounded-lg text-xs"></div>
+                    </div>
+                </div>
+
+                <!-- BOTONES -->
+                <div class="flex justify-end items-center gap-2 pt-2 border-t border-slate-200">
+                    <button type="button" onclick="fecharModal()" class="px-3.5 py-1.5 border border-slate-300 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50">Cancelar</button>
+                    <button type="submit" id="btnSalvarChange" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 flex items-center gap-1.5">
+                        <i class="fa-solid fa-floppy-disk"></i> Guardar Change
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+
+    <!-- MODAL DE CARGA MASIVA EXCEL / CSV -->
+    <div id="modalUploadExcel" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-3 z-50">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5 border border-slate-200">
+            
+            <div class="flex justify-between items-center pb-3 border-b border-slate-200 mb-3">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                        <i class="fa-solid fa-file-arrow-up text-base"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-black text-slate-800">Cargar Backlog desde Excel o CSV</h3>
+                        <p class="text-[11px] text-slate-500 font-medium">Importa múltiples changes de forma masiva</p>
+                    </div>
+                </div>
+                <button onclick="fecharModalUploadExcel()" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center text-base">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Dropzone -->
+            <div id="uploadDropzone" class="upload-dropzone mb-3" onclick="document.getElementById('inputExcelFile').click()">
+                <input type="file" id="inputExcelFile" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleExcelFileSelect(event)">
+                <i class="fa-solid fa-cloud-arrow-up text-2xl text-amber-500 mb-1.5"></i>
+                <h4 class="font-bold text-xs text-slate-700">Arrastra tu archivo Excel aquí o haz clic para seleccionarlo</h4>
+                <p class="text-[11px] text-slate-400 mt-0.5">Soporta formatos .xlsx, .xls y .csv con mapeo automático</p>
+            </div>
+
+            <div class="flex justify-between items-center mb-3">
+                <button onclick="descargarPlantillaExcel()" class="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
+                    <i class="fa-solid fa-download"></i> Descargar Plantilla Excel
+                </button>
+                <div class="flex items-center gap-3 text-xs font-semibold text-slate-700">
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="radio" name="modoImportacion" value="anexar" checked class="text-blue-600"> Anexar
+                    </label>
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="radio" name="modoImportacion" value="reemplazar" class="text-rose-600"> Reemplazar
+                    </label>
+                </div>
+            </div>
+
+            <div id="previewUploadContainer" class="hidden p-2.5 bg-slate-50 rounded-xl border border-slate-200 mb-3">
+                <div class="flex justify-between items-center mb-1.5">
+                    <span id="txtTotalImportar" class="font-bold text-xs text-slate-800">0 items detectados</span>
+                    <span id="txtResumenImportar" class="text-[10px] text-slate-500 font-medium"></span>
+                </div>
+                <div class="max-h-36 overflow-y-auto custom-scroll">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-200 text-slate-600 font-bold uppercase text-[9px]">
+                            <tr>
+                                <th class="p-1.5">Change</th>
+                                <th class="p-1.5">Solicitante</th>
+                                <th class="p-1.5">Producto</th>
+                                <th class="p-1.5 text-center">Horas</th>
+                                <th class="p-1.5 text-center">Fase</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbodyPreviewExcel"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="flex justify-end items-center gap-2 pt-2 border-t border-slate-200">
+                <button onclick="fecharModalUploadExcel()" class="px-3.5 py-1.5 border border-slate-300 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50">Cancelar</button>
+                <button id="btnConfirmarImportacion" onclick="ejecutarImportacionExcel()" disabled class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5">
+                    <i class="fa-solid fa-check"></i> Confirmar e Importar
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- CONTENEDOR DE NOTIFICACIONES TOAST -->
+    <div id="toast-container"></div>
+
+    <!-- Scripts de la Aplicación -->
+    <script src="sample_data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
