@@ -1,136 +1,113 @@
 /**
- * config_paises.js
+ * config_paises.js — v4.1
  * ======================================================
- * CONFIGURACIÓN DE REGLAS DE NEGOCIO POR PAÍS
- * Portal de Gestión de Changes y Capacidad — Nestlé
+ * CONFIGURACIÓN DINÁMICA DE PAÍSES
  * ======================================================
+ * 
+ * REGLA GLOBAL FIJA (NO configurable):
+ *   Máximo 30 horas por Change. Si > 30h → Proyecto.
+ *   Aplica a TODOS los países sin excepción.
  *
- * INSTRUCCIONES PARA ADMINISTRADORES:
- * Este archivo es la ÚNICA fuente de configuración de reglas por país.
- * Para modificar la capacidad de un país o agregar uno nuevo,
- * edita ÚNICAMENTE este archivo. No es necesario tocar app.js.
+ * CONFIGURABLE POR PAÍS (desde la UI, sin tocar código):
+ *   - Nombre del país
+ *   - Horas disponibles mensuales
+ *   - Color en gráficos
+ *   - Estado activo/inactivo
  *
- * ESTRUCTURA DE CADA PAÍS:
- * {
- *   nombre:             string  — Nombre visible en la UI
- *   horasDisponibles:   number  — Capacidad mensual total en horas
- *   maxHorasPorChange:  number  — Límite máximo de horas por Change
- *   activo:             boolean — Si aparece en los filtros del portal
- *   color:              string  — Color identificador en gráficos (hex)
- *   zona:               string  — Zona horaria principal del equipo
- * }
- *
- * REGLA UNIVERSAL (aplica a todos los países):
- *   horasChange <= maxHorasPorChange  →  "Small Enhancement (Mejora)"
- *   horasChange >  maxHorasPorChange  →  "Proyecto (fuera de alcance)"
+ * Los países se guardan en localStorage para que puedan
+ * agregarse nuevos desde la aplicación sin modificar código.
  */
 
-const CONFIG_PAISES = {
-  Brasil: {
-    nombre: 'Brasil',
-    horasDisponibles: 160,
-    maxHorasPorChange: 30,
-    activo: true,
-    color: '#2563eb',
-    zona: 'America/Sao_Paulo',
-    descripcion: 'Capacidad estándar región LAC.'
-  },
+// ============================================================
+// REGLA GLOBAL FIJA — NO MODIFICAR
+// ============================================================
+const REGLA_MAX_HORAS_CHANGE = 30;
+// Si horasChange <= 30 → "Mejora (Change)"
+// Si horasChange > 30 → "Proyecto"
 
-  Mexico: {
-    nombre: 'México',
-    horasDisponibles: 120,
-    maxHorasPorChange: 25,
-    activo: true,
-    color: '#16a34a',
-    zona: 'America/Mexico_City',
-    descripcion: 'Capacidad asignada para operaciones México.'
-  },
+// ============================================================
+// PAÍSES POR DEFECTO (solo se usan la primera vez)
+// Después se administran desde la UI y se guardan en localStorage
+// ============================================================
+const PAISES_DEFAULT = [
+  { key: 'Brasil',    nombre: 'Brasil',    horasDisponibles: 160, color: '#2563eb', activo: true },
+  { key: 'Mexico',    nombre: 'México',    horasDisponibles: 120, color: '#16a34a', activo: true },
+  { key: 'Argentina', nombre: 'Argentina', horasDisponibles: 100, color: '#d97706', activo: true },
+  { key: 'Colombia',  nombre: 'Colombia',  horasDisponibles: 80,  color: '#7c3aed', activo: true },
+  { key: 'Chile',     nombre: 'Chile',     horasDisponibles: 80,  color: '#dc2626', activo: true },
+];
 
-  Argentina: {
-    nombre: 'Argentina',
-    horasDisponibles: 100,
-    maxHorasPorChange: 20,
-    activo: true,
-    color: '#d97706',
-    zona: 'America/Argentina/Buenos_Aires',
-    descripcion: 'Capacidad asignada para operaciones Argentina.'
-  },
+// ============================================================
+// GESTIÓN DE PAÍSES EN LOCALSTORAGE
+// ============================================================
 
-  Colombia: {
-    nombre: 'Colombia',
-    horasDisponibles: 80,
-    maxHorasPorChange: 20,
-    activo: true,
-    color: '#7c3aed',
-    zona: 'America/Bogota',
-    descripcion: 'Capacidad asignada para operaciones Colombia.'
-  },
-
-  Chile: {
-    nombre: 'Chile',
-    horasDisponibles: 80,
-    maxHorasPorChange: 20,
-    activo: true,
-    color: '#dc2626',
-    zona: 'America/Santiago',
-    descripcion: 'Capacidad asignada para operaciones Chile.'
-  },
-
-  // -------------------------------------------------------
-  // PARA AGREGAR UN NUEVO PAÍS, COPIA EL BLOQUE DE ABAJO:
-  // -------------------------------------------------------
-  // NuevoPais: {
-  //   nombre: 'Nombre del País',
-  //   horasDisponibles: 100,
-  //   maxHorasPorChange: 25,
-  //   activo: true,
-  //   color: '#0891b2',
-  //   zona: 'America/...',
-  //   descripcion: 'Descripción opcional.'
-  // },
-};
-
-/**
- * Obtiene la configuración de un país por su key.
- * Si el país no existe o es "todos", devuelve configuración global.
- * @param {string} paisKey — Key del país (ej. "Brasil", "Mexico")
- * @returns {object} Config del país
- */
-function obtenerConfigPais(paisKey) {
-  if (paisKey && paisKey !== 'todos' && CONFIG_PAISES[paisKey]) {
-    return CONFIG_PAISES[paisKey];
+function cargarPaisesDesdeStorage() {
+  const raw = localStorage.getItem('nestle_config_paises_v4');
+  if (raw) {
+    try { return JSON.parse(raw); } catch (_) {}
   }
-  // Si es "todos los países", se devuelve la suma de todos los activos
-  const activos = Object.values(CONFIG_PAISES).filter(p => p.activo);
-  return {
-    nombre: 'Todos los Países',
-    horasDisponibles: activos.reduce((s, p) => s + p.horasDisponibles, 0),
-    maxHorasPorChange: Math.min(...activos.map(p => p.maxHorasPorChange)),
-    activo: true,
-    color: '#64748b',
-    zona: 'UTC',
-    descripcion: 'Consolidado de todos los países activos.'
-  };
+  // Primera vez: usar defaults y guardar
+  localStorage.setItem('nestle_config_paises_v4', JSON.stringify(PAISES_DEFAULT));
+  return [...PAISES_DEFAULT];
 }
 
-/**
- * Devuelve array de países activos ordenados por nombre.
- * @returns {Array<{key, config}>}
- */
+function guardarPaisesEnStorage(paises) {
+  localStorage.setItem('nestle_config_paises_v4', JSON.stringify(paises));
+}
+
 function obtenerPaisesActivos() {
-  return Object.entries(CONFIG_PAISES)
-    .filter(([, cfg]) => cfg.activo)
-    .sort(([, a], [, b]) => a.nombre.localeCompare(b.nombre))
-    .map(([key, cfg]) => ({ key, ...cfg }));
+  return cargarPaisesDesdeStorage().filter(p => p.activo).sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+function obtenerTodosPaises() {
+  return cargarPaisesDesdeStorage().sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+function obtenerConfigPais(paisKey) {
+  if (!paisKey || paisKey === 'todos') {
+    const activos = obtenerPaisesActivos();
+    return {
+      nombre: 'Todos los Países',
+      horasDisponibles: activos.reduce((s, p) => s + p.horasDisponibles, 0),
+      color: '#64748b',
+      activo: true,
+    };
+  }
+  const paises = cargarPaisesDesdeStorage();
+  const found = paises.find(p => p.key === paisKey);
+  return found || { nombre: paisKey, horasDisponibles: 100, color: '#94a3b8', activo: true };
+}
+
+function agregarPais(nombre, horasDisponibles, color) {
+  const paises = cargarPaisesDesdeStorage();
+  const key = nombre.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+  if (paises.find(p => p.key === key)) return false; // ya existe
+  paises.push({ key, nombre, horasDisponibles: parseInt(horasDisponibles) || 100, color: color || '#64748b', activo: true });
+  guardarPaisesEnStorage(paises);
+  return true;
+}
+
+function actualizarPais(key, horasDisponibles, activo) {
+  const paises = cargarPaisesDesdeStorage();
+  const idx = paises.findIndex(p => p.key === key);
+  if (idx === -1) return false;
+  paises[idx].horasDisponibles = parseInt(horasDisponibles) || paises[idx].horasDisponibles;
+  paises[idx].activo = activo !== undefined ? activo : paises[idx].activo;
+  guardarPaisesEnStorage(paises);
+  return true;
+}
+
+function eliminarPais(key) {
+  let paises = cargarPaisesDesdeStorage();
+  paises = paises.filter(p => p.key !== key);
+  guardarPaisesEnStorage(paises);
 }
 
 /**
- * Clasifica una Change según las reglas del país.
- * @param {number} horas — Horas estimadas
- * @param {string} paisKey — Key del país
+ * Clasifica una Change según la regla global de 30h.
+ * @param {number} horas
  * @returns {string} "Mejora" | "Proyecto"
  */
-function clasificarChange(horas, paisKey) {
-  const cfg = obtenerConfigPais(paisKey);
-  return horas <= cfg.maxHorasPorChange ? 'Mejora' : 'Proyecto';
+function clasificarChange(horas) {
+  return horas <= REGLA_MAX_HORAS_CHANGE ? 'Mejora' : 'Proyecto';
 }
