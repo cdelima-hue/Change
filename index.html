@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal de Gestión de Changes — Nestlé v4.2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="p-3 md:p-4 bg-slate-50 min-h-screen">
+
+<!-- ====================================================
+     HEADER — Control de sesión, sincronización y acciones
+     ==================================================== -->
+<header class="bg-white px-4 py-2.5 rounded-2xl shadow-sm border border-slate-200 mb-3 flex flex-wrap xl:flex-nowrap justify-between items-center gap-2">
+    <!-- Logo + Título -->
+    <div class="flex items-center gap-3 shrink-0">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shrink-0">
+            <i class="fa-solid fa-layer-group text-lg"></i>
+        </div>
+        <div>
+            <div class="flex items-center gap-2">
+                <h1 class="text-base font-black text-slate-800 whitespace-nowrap">Portal Gestión de Changes</h1>
+                <span class="text-[9px] font-bold px-1.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hidden sm:inline">v4.2</span>
+            </div>
+            <div class="flex items-center gap-2 mt-0.5">
+                <span id="indicadorSync" class="status-pill-live px-2 rounded-full text-[10px] font-semibold flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                    <i class="fa-solid fa-wifi text-emerald-600"></i> En línea
+                </span>
+                <span class="text-[10px] text-slate-400 hidden md:inline">Regla global: máx. 30h por Change &bull; Control de Roles Activo</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controles de Usuario, Periodo y Acciones -->
+    <div class="flex items-center gap-1.5 flex-wrap xl:flex-nowrap shrink-0">
+        <!-- Selector de Usuario / Sesión Activa -->
+        <div class="flex items-center bg-slate-100 px-2.5 py-1 rounded-xl border border-slate-200 shrink-0">
+            <i class="fa-solid fa-user-shield text-slate-500 text-xs mr-1.5"></i>
+            <div class="flex flex-col">
+                <span class="text-[9px] text-slate-400 font-bold uppercase leading-none">Sesión:</span>
+                <select id="selectUsuarioSesion" class="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer">
+                    <!-- Se llena dinámicamente -->
+                </select>
+            </div>
+            <span id="badgeRolUsuario" class="badge-role-admin ml-2 px-2 py-0.5 rounded text-[10px] font-bold">Admin</span>
+        </div>
+
+        <!-- Periodo -->
+        <div class="flex items-center bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 shrink-0">
+            <i class="fa-solid fa-calendar text-slate-500 text-[11px] mr-1.5"></i>
+            <label for="selectorMes" class="text-xs font-bold text-slate-600 mr-1">Periodo:</label>
+            <input type="month" id="selectorMes" class="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer">
+        </div>
+
+        <button onclick="sincronizarConSharePoint()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300 shadow-sm whitespace-nowrap shrink-0">
+            <i class="fa-solid fa-rotate text-blue-600"></i> Sync
+        </button>
+        <button id="btnCargarExcelHeader" onclick="abrirModalUploadExcel()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-opacity">
+            <i class="fa-solid fa-file-arrow-up"></i> Excel
+        </button>
+        <button onclick="exportarExcel()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0">
+            <i class="fa-solid fa-file-excel"></i> Exportar
+        </button>
+        <button id="btnNuevaChangeHeader" onclick="abrirModalNuevaChange()" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md whitespace-nowrap shrink-0 transition-opacity">
+            <i class="fa-solid fa-plus"></i> + Change
+        </button>
+    </div>
+</header>
+
+<!-- ALERTA SOBRECAPACIDAD -->
+<div id="alertaSobrecapacidad" class="hidden mb-3 p-3 rounded-xl badge-overcapacity flex items-center justify-between">
+    <div class="flex items-center gap-2">
+        <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+        <span class="font-bold text-xs text-rose-900">¡Capacidad excedida! Exceso: <b id="txtExcesoHoras">0h</b></span>
+    </div>
+</div>
+
+<!-- ====================================================
+     TARJETAS DE CAPACIDAD DEL MES
+     ==================================================== -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
+    <!-- Gauge -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-start mb-1">
+            <div>
+                <h3 class="font-extrabold text-slate-800 text-xs">Capacidad del Mes</h3>
+                <p id="txtCapacidadPais" class="text-[10px] text-slate-400">Capacidad: 160h</p>
+            </div>
+            <span id="txtMaxHorasPais" class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">Máx. 30h</span>
+        </div>
+        <div class="relative h-20 mx-auto w-44"><canvas id="gaugeCapacidade"></canvas></div>
+        <div class="grid grid-cols-3 text-center border-t border-slate-100 pt-2 mt-1 gap-1">
+            <div><span class="text-[9px] font-semibold text-slate-500 uppercase block">Disponibles</span><span id="txtHorasDisponibles" class="font-black text-sm text-slate-600">160 h</span></div>
+            <div class="border-x border-slate-100"><span class="text-[9px] font-semibold text-slate-500 uppercase block">Utilizadas</span><span id="txtHorasConsumidas" class="font-black text-sm text-slate-800">0 h</span></div>
+            <div><span class="text-[9px] font-semibold text-slate-500 uppercase block">Restantes</span><span id="txtHorasResta" class="font-black text-sm text-emerald-600">160 h</span></div>
+        </div>
+    </div>
+    <!-- 6 KPIs -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <h3 class="font-extrabold text-slate-800 text-xs mb-3">Indicadores del Período</h3>
+        <div class="grid grid-cols-3 gap-2">
+            <div class="p-2 bg-slate-50 rounded-xl text-center"><span class="text-[9px] text-slate-500 font-medium block">% Uso</span><span id="txtPctUso" class="font-black text-sm text-blue-700">0%</span></div>
+            <div class="p-2 bg-slate-50 rounded-xl text-center"><span class="text-[9px] text-slate-500 font-medium block">Comprometidas</span><span id="txtHorasComprometidas" class="font-black text-sm text-amber-700">0 h</span></div>
+            <div class="p-2 bg-slate-50 rounded-xl text-center"><span class="text-[9px] text-slate-500 font-medium block">Changes</span><span id="txtTotalChanges" class="font-black text-sm text-slate-800">0</span></div>
+            <div class="p-2 bg-slate-50 rounded-xl text-center"><span class="text-[9px] text-slate-500 font-medium block">Promedio</span><span id="txtPromedioPorChange" class="font-black text-sm text-slate-700">0 h</span></div>
+            <div class="p-2 bg-rose-50 rounded-xl text-center border border-rose-100"><span class="text-[9px] text-rose-500 font-medium block">Sobre Límite</span><span id="txtSobreLimite" class="font-black text-sm text-rose-700">0</span></div>
+            <div class="p-2 bg-emerald-50 rounded-xl text-center border border-emerald-100"><span class="text-[9px] text-emerald-600 font-medium block">Mejoras</span><span id="txtCountSmall" class="font-black text-sm text-emerald-700">0</span></div>
+        </div>
+    </div>
+    <!-- Productos -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <h3 class="font-extrabold text-slate-800 text-xs mb-2">Distribución por Producto</h3>
+        <div id="containerProductos" class="space-y-1.5 overflow-y-auto max-h-32"><p class="text-xs text-slate-400 py-3 text-center">Cargando...</p></div>
+    </div>
+</div>
+
+<!-- ====================================================
+     PESTAÑAS DE NAVEGACIÓN Y FILTROS
+     ==================================================== -->
+<div class="bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-200 mb-3">
+    <div class="flex flex-col 2xl:flex-row justify-between items-start 2xl:items-center gap-2">
+        <!-- Tabs: 7 pestañas -->
+        <div class="flex items-center gap-0.5 overflow-x-auto shrink-0">
+            <button data-view="kanban" class="tab-btn py-1.5 px-3 font-bold text-xs text-blue-600 border-b-2 border-blue-600 flex items-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-table-columns"></i> Kanban</button>
+            <button data-view="fases" class="tab-btn py-1.5 px-3 font-semibold text-xs text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-list-check"></i> Matriz</button>
+            <button data-view="dashboard" class="tab-btn py-1.5 px-3 font-semibold text-xs text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-chart-pie"></i> Dashboard</button>
+            <button data-view="tabla" class="tab-btn py-1.5 px-3 font-semibold text-xs text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-table-list"></i> Backlog</button>
+            <button data-view="historial" class="tab-btn py-1.5 px-3 font-semibold text-xs text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-clock-rotate-left"></i> Historial</button>
+            <button data-view="config" class="tab-btn py-1.5 px-3 font-semibold text-xs text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-globe"></i> Países</button>
+            <button data-view="usuarios" class="tab-btn py-1.5 px-3 font-semibold text-xs text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-users-gear"></i> Usuarios</button>
+        </div>
+        <!-- Filtros -->
+        <div class="flex items-center gap-1.5 flex-wrap 2xl:flex-nowrap shrink-0">
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-2 top-1.5 text-slate-400 text-[10px]"></i>
+                <input type="text" id="inpBuscar" placeholder="Buscar..." class="pl-6 pr-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs w-28 focus:w-40 focus:bg-white focus:border-blue-500 outline-none transition-all">
+            </div>
+            <select id="filtroPais" class="py-1 px-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 outline-none max-w-[130px] cursor-pointer"><option value="todos">Todos los Países</option></select>
+            <select id="filtroSolicitante" class="py-1 px-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 outline-none max-w-[130px] cursor-pointer"><option value="todos">Solicitantes</option></select>
+            <select id="filtroBusinessService" class="py-1 px-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 outline-none max-w-[130px] cursor-pointer"><option value="todos">Services</option></select>
+            <select id="filtroProducto" class="py-1 px-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 outline-none max-w-[120px] cursor-pointer"><option value="todos">Productos</option></select>
+            <select id="filtroStatus" class="py-1 px-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 outline-none cursor-pointer">
+                <option value="todos">Estados</option><option value="Aprovado">Aprobado</option><option value="Pendente">Pendiente</option><option value="Rejeitado">Rechazado</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- ====================================================
+     1. SECCIÓN KANBAN
+     ==================================================== -->
+<div id="secaoKanban" class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 pb-6">
+    <div id="kanban-col-Abertura" data-fase="Abertura" class="kanban-col bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 flex flex-col">
+        <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none select-none"><span class="font-extrabold text-[10px] text-slate-600 uppercase tracking-wide">1. Abertura</span><span id="badge-Abertura" class="bg-slate-300 text-slate-700 text-[10px] font-bold px-1.5 rounded-full min-w-[18px] text-center">0</span></div>
+        <div id="col-Abertura" class="space-y-2 flex-1 min-h-[380px]"></div></div>
+    <div id="kanban-col-Reuniao" data-fase="Reuniao" class="kanban-col bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 flex flex-col">
+        <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none select-none"><span class="font-extrabold text-[10px] text-slate-600 uppercase tracking-wide">2. Reunião</span><span id="badge-Reuniao" class="bg-slate-300 text-slate-700 text-[10px] font-bold px-1.5 rounded-full min-w-[18px] text-center">0</span></div>
+        <div id="col-Reuniao" class="space-y-2 flex-1 min-h-[380px]"></div></div>
+    <div id="kanban-col-Analise" data-fase="Analise" class="kanban-col bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 flex flex-col">
+        <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none select-none"><span class="font-extrabold text-[10px] text-slate-600 uppercase tracking-wide">3. Análise</span><span id="badge-Analise" class="bg-slate-300 text-slate-700 text-[10px] font-bold px-1.5 rounded-full min-w-[18px] text-center">0</span></div>
+        <div id="col-Analise" class="space-y-2 flex-1 min-h-[380px]"></div></div>
+    <div id="kanban-col-Comite" data-fase="Comite" class="kanban-col bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 flex flex-col">
+        <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none select-none"><span class="font-extrabold text-[10px] text-slate-600 uppercase tracking-wide">4. Comitê</span><span id="badge-Comite" class="bg-slate-300 text-slate-700 text-[10px] font-bold px-1.5 rounded-full min-w-[18px] text-center">0</span></div>
+        <div id="col-Comite" class="space-y-2 flex-1 min-h-[380px]"></div></div>
+    <div id="kanban-col-Apresentacao" data-fase="Apresentacao" class="kanban-col bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200 flex flex-col">
+        <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-200 pointer-events-none select-none"><span class="font-extrabold text-[10px] text-indigo-700 uppercase tracking-wide">5. Apresentação</span><span id="badge-Apresentacao" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-1.5 rounded-full min-w-[18px] text-center">0</span></div>
+        <div id="col-Apresentacao" class="space-y-2 flex-1 min-h-[380px]"></div></div>
+    <div id="kanban-col-Aprovacao" data-fase="Aprovacao" class="kanban-col bg-emerald-50/80 p-2.5 rounded-2xl border border-emerald-200 flex flex-col">
+        <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-emerald-200 pointer-events-none select-none"><span class="font-extrabold text-[10px] text-emerald-700 uppercase tracking-wide">6. Aprovação</span><span id="badge-Aprovacao" class="bg-emerald-200 text-emerald-800 text-[10px] font-bold px-1.5 rounded-full min-w-[18px] text-center">0</span></div>
+        <div id="col-Aprovacao" class="space-y-2 flex-1 min-h-[380px]"></div></div>
+    <div id="kanban-col-Execucao" data-fase="Execucao" class="kanban-col bg-blue-50/80 p-2.5 rounded-2xl border border-blue-200 flex flex-col">
+        <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-blue-200 pointer-events-none select-none"><span class="font-extrabold text-[10px] text-blue-700 uppercase tracking-wide">7. Execução</span><span id="badge-Execucao" class="bg-blue-200 text-blue-800 text-[10px] font-bold px-1.5 rounded-full min-w-[18px] text-center">0</span></div>
+        <div id="col-Execucao" class="space-y-2 flex-1 min-h-[380px]"></div></div>
+    <div id="kanban-col-Concluida" data-fase="Concluida" class="kanban-col bg-emerald-100/80 p-2.5 rounded-2xl border border-emerald-300 flex flex-col">
+        <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-emerald-300 pointer-events-none select-none"><span class="font-extrabold text-[10px] text-emerald-800 uppercase tracking-wide">8. Concluída</span><span id="badge-Concluida" class="bg-emerald-300 text-emerald-900 text-[10px] font-bold px-1.5 rounded-full min-w-[18px] text-center">0</span></div>
+        <div id="col-Concluida" class="space-y-2 flex-1 min-h-[380px]"></div></div>
+</div>
+
+<!-- ====================================================
+     2. SECCIÓN MATRIZ DE FASES
+     ==================================================== -->
+<div id="secaoFases" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-4">
+    <div class="p-3 bg-slate-50 border-b border-slate-200">
+        <h3 class="font-bold text-slate-800 text-xs">Matriz de Checkpoints por Fase</h3>
+        <p class="text-[11px] text-slate-500">Haz clic en un checkpoint para registrar la fecha. Los cambios se reflejan en el Kanban.</p>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+            <thead class="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] border-b border-slate-200">
+                <tr><th class="p-2.5 text-left">Change</th><th class="p-2.5 text-left">Solicitante</th><th class="p-2.5 text-left">Producto</th>
+                <th class="p-2.5 text-center">1</th><th class="p-2.5 text-center">2</th><th class="p-2.5 text-center">3</th><th class="p-2.5 text-center">4</th>
+                <th class="p-2.5 text-center">5</th><th class="p-2.5 text-center">6</th><th class="p-2.5 text-center">7</th><th class="p-2.5 text-center">8</th></tr>
+            </thead>
+            <tbody id="tbodyFases" class="divide-y divide-slate-100"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ====================================================
+     3. SECCIÓN DASHBOARD CON ACUMULADO TOTAL
+     ==================================================== -->
+<div id="secaoDashboard" class="hidden space-y-4 mb-4">
+    <!-- Fila 1: Horas por Producto + Changes por Fase -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+            <h3 class="font-bold text-slate-800 text-xs mb-3"><i class="fa-solid fa-chart-column text-blue-600 mr-1.5"></i>Horas por Producto (filtrado por país)</h3>
+            <div class="relative h-56"><canvas id="chartProductosDash"></canvas></div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+            <h3 class="font-bold text-slate-800 text-xs mb-3"><i class="fa-solid fa-chart-pie text-emerald-600 mr-1.5"></i>Changes por Fase</h3>
+            <div class="relative h-56"><canvas id="chartFasesDash"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Fila 2: Comparativo Mensual (Mes Anterior vs Mes Actual) -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="font-bold text-slate-800 text-xs"><i class="fa-solid fa-chart-bar text-indigo-600 mr-1.5"></i>Comparativo Mensual de Capacidad y Uso</h3>
+            <span class="text-[10px] text-slate-400 italic">Filtrado por país seleccionado</span>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div><h4 class="text-xs font-bold text-slate-600 mb-2"><i class="fa-solid fa-arrow-left text-slate-400 mr-1"></i>Mes Anterior: <span id="lblMesAnterior">—</span></h4><div class="relative h-48"><canvas id="chartMesAnterior"></canvas></div></div>
+            <div><h4 class="text-xs font-bold text-slate-600 mb-2"><i class="fa-solid fa-calendar-check text-blue-500 mr-1"></i>Mes Actual: <span id="lblMesActual" class="text-blue-700">—</span></h4><div class="relative h-48"><canvas id="chartMesActual"></canvas></div></div>
+        </div>
+    </div>
+
+    <!-- Fila 3: NUEVO INDICADOR — ACUMULADO TOTAL -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-blue-200 bg-gradient-to-br from-white to-blue-50/40">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-blue-100">
+            <div>
+                <h3 class="font-black text-slate-800 text-sm flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs shadow-sm"><i class="fa-solid fa-calculator"></i></span>
+                    Acumulado Total del Período / Histórico
+                </h3>
+                <p class="text-[11px] text-slate-500">Muestra el consolidado acumulado de todos los períodos registrados para el país seleccionado.</p>
+            </div>
+            <span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-300 shrink-0">Indicador YTD Consolidado</span>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+            <div class="p-3 bg-white rounded-xl border border-slate-200 shadow-xs text-center">
+                <span class="text-[10px] text-slate-500 font-semibold uppercase block mb-0.5">Horas Acumuladas</span>
+                <span id="txtAcumuladoHorasTotales" class="font-black text-base text-blue-700">0 h</span>
+            </div>
+            <div class="p-3 bg-white rounded-xl border border-slate-200 shadow-xs text-center">
+                <span class="text-[10px] text-slate-500 font-semibold uppercase block mb-0.5">Capacidad Total</span>
+                <span id="txtAcumuladoCapacidadTotal" class="font-black text-base text-slate-700">0 h</span>
+            </div>
+            <div class="p-3 bg-white rounded-xl border border-slate-200 shadow-xs text-center">
+                <span class="text-[10px] text-slate-500 font-semibold uppercase block mb-0.5">% Consumo Acum.</span>
+                <span id="txtAcumuladoPctUso" class="font-black text-base text-emerald-700">0%</span>
+            </div>
+            <div class="p-3 bg-white rounded-xl border border-slate-200 shadow-xs text-center">
+                <span class="text-[10px] text-slate-500 font-semibold uppercase block mb-0.5">Changes Acumuladas</span>
+                <span id="txtAcumuladoTotalChanges" class="font-black text-base text-slate-800">0</span>
+            </div>
+            <div class="p-3 bg-white rounded-xl border border-slate-200 shadow-xs text-center col-span-2 sm:col-span-1">
+                <span class="text-[10px] text-slate-500 font-semibold uppercase block mb-0.5">Promedio Mensual</span>
+                <span id="txtAcumuladoPromedioMensual" class="font-black text-base text-indigo-700">0 h/mes</span>
+            </div>
+        </div>
+
+        <div class="relative h-56 bg-white p-3 rounded-xl border border-slate-200">
+            <canvas id="chartAcumuladoTotal"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- ====================================================
+     4. SECCIÓN BACKLOG
+     ==================================================== -->
+<div id="secaoTabla" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-4">
+    <div class="overflow-x-auto">
+        <table class="w-full text-xs text-left">
+            <thead class="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] border-b border-slate-200">
+                <tr><th class="p-2.5">Change</th><th class="p-2.5">País</th><th class="p-2.5">Solicitante</th><th class="p-2.5">Service</th><th class="p-2.5">Producto</th><th class="p-2.5">Descripción</th><th class="p-2.5 text-center">Horas</th><th class="p-2.5 text-center">Tipo</th><th class="p-2.5 text-center">Fase</th><th class="p-2.5 text-center">Estado</th><th class="p-2.5 text-center">Acc.</th></tr>
+            </thead>
+            <tbody id="tbodyBacklog" class="divide-y divide-slate-100"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ====================================================
+     5. SECCIÓN HISTORIAL / AUDIT LOG
+     ==================================================== -->
+<div id="secaoHistorial" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-4">
+    <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div>
+            <h3 class="font-bold text-slate-800 text-xs"><i class="fa-solid fa-clock-rotate-left text-indigo-600 mr-1.5"></i>Historial de Auditoría</h3>
+            <p class="text-[11px] text-slate-500">Log completo de todas las modificaciones realizadas. No se sobrescribe.</p>
+        </div>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">Últimos 500 registros</span>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-xs text-left">
+            <thead class="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] border-b border-slate-200">
+                <tr>
+                    <th class="p-2.5">Fecha / Hora</th>
+                    <th class="p-2.5">Usuario</th>
+                    <th class="p-2.5">Change</th>
+                    <th class="p-2.5">Campo Modificado</th>
+                    <th class="p-2.5">Valor Anterior</th>
+                    <th class="p-2.5">Valor Nuevo</th>
+                </tr>
+            </thead>
+            <tbody id="tbodyHistorial" class="divide-y divide-slate-100"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ====================================================
+     6. SECCIÓN CONFIGURACIÓN DE PAÍSES
+     ==================================================== -->
+<div id="secaoConfig" class="hidden space-y-4 mb-4">
+    <!-- Regla global -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-scale-balanced text-lg"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-slate-800 text-xs">Regla Global — Límite por Change</h3>
+                <p class="text-[11px] text-slate-500">Esta regla aplica a <b>todos los países</b> sin excepción y <b>no es configurable</b>.</p>
+            </div>
+            <div class="ml-auto px-4 py-2 bg-rose-50 border-2 border-rose-200 rounded-xl text-center">
+                <span class="block text-2xl font-black text-rose-700">30h</span>
+                <span class="block text-[10px] font-bold text-rose-600">Máximo por Change</span>
+            </div>
+        </div>
+        <div class="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900">
+            <i class="fa-solid fa-circle-info text-amber-600 mr-1"></i>
+            Si una Change tiene <b>≤ 30 horas</b> → se clasifica como <b>Mejora (Change)</b>.<br>
+            Si una Change tiene <b>> 30 horas</b> → se clasifica como <b>Proyecto</b> (fuera de alcance del equipo de mejoras).
+        </div>
+    </div>
+
+    <!-- Tabla de países -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <h3 class="font-bold text-slate-800 text-xs mb-3"><i class="fa-solid fa-globe text-blue-600 mr-1.5"></i>Países y Horas Mensuales</h3>
+        <p class="text-[11px] text-slate-500 mb-3">Edita las horas directamente en la tabla. Los cambios se aplican inmediatamente.</p>
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+                <thead class="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] border-b border-slate-200">
+                    <tr>
+                        <th class="p-2.5 text-left">País</th>
+                        <th class="p-2.5 text-center">Horas Mensuales</th>
+                        <th class="p-2.5 text-center">Máx. por Change</th>
+                        <th class="p-2.5 text-center">Activo</th>
+                        <th class="p-2.5 text-center w-12"></th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyConfigPaises" class="divide-y divide-slate-100"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Agregar nuevo país -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <h3 class="font-bold text-slate-800 text-xs mb-3"><i class="fa-solid fa-plus-circle text-emerald-600 mr-1.5"></i>Agregar Nuevo País</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+            <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Nombre del País *</label>
+                <input type="text" id="inpNuevoPaisNombre" placeholder="Ej: Perú, Ecuador..."
+                    class="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold focus:border-blue-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Horas Mensuales *</label>
+                <input type="number" id="inpNuevoPaisHoras" value="100" min="10" step="10"
+                    class="w-full p-2 border border-slate-300 rounded-lg text-xs font-bold text-center focus:border-blue-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Color</label>
+                <input type="color" id="inpNuevoPaisColor" value="#0891b2"
+                    class="w-full h-9 border border-slate-300 rounded-lg cursor-pointer">
+            </div>
+            <div>
+                <button onclick="onAgregarPais()" class="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-plus"></i> Agregar País
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ====================================================
+     7. NUEVA SECCIÓN — GESTIÓN DE USUARIOS Y PERMISOS
+     ==================================================== -->
+<div id="secaoUsuarios" class="hidden space-y-4 mb-4">
+    <!-- Alerta de permisos -->
+    <div id="alertaPermisoUsuarios" class="hidden p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center">
+    </div>
+
+    <!-- Lista de Usuarios -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between mb-3">
+            <div>
+                <h3 class="font-bold text-slate-800 text-xs flex items-center gap-2">
+                    <i class="fa-solid fa-users-gear text-blue-600"></i> Control de Usuarios y Permisos
+                </h3>
+                <p class="text-[11px] text-slate-500">Administra los usuarios y asigna permisos de <b>Administrador</b>, <b>Edición</b> o <b>Lectura</b>.</p>
+            </div>
+            <div class="flex items-center gap-2 text-[10px]">
+                <span class="badge-role-admin px-2 py-0.5 rounded font-bold">🛡️ Administrador (Total)</span>
+                <span class="badge-role-edit px-2 py-0.5 rounded font-bold">✏️ Edición</span>
+                <span class="badge-role-read px-2 py-0.5 rounded font-bold">👁️ Lectura</span>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+                <thead class="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] border-b border-slate-200">
+                    <tr>
+                        <th class="p-2.5 text-left">ID</th>
+                        <th class="p-2.5 text-left">Nombre / Colaborador</th>
+                        <th class="p-2.5 text-left">Correo Electrónico</th>
+                        <th class="p-2.5 text-center">Nivel de Acceso</th>
+                        <th class="p-2.5 text-center">Estado</th>
+                        <th class="p-2.5 text-center w-12"></th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyUsuarios" class="divide-y divide-slate-100"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Formulario Crear Usuario -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <h3 class="font-bold text-slate-800 text-xs mb-3 flex items-center gap-1.5">
+            <i class="fa-solid fa-user-plus text-emerald-600"></i> Registrar Nuevo Usuario
+        </h3>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+            <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Nombre Completo *</label>
+                <input type="text" id="inpNuevoUsuarioNombre" placeholder="Ej: Patricia Rojas"
+                    class="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold focus:border-blue-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Correo Electrónico *</label>
+                <input type="email" id="inpNuevoUsuarioEmail" placeholder="patricia.rojas@nestle.com"
+                    class="w-full p-2 border border-slate-300 rounded-lg text-xs focus:border-blue-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Nivel de Acceso *</label>
+                <select id="inpNuevoUsuarioRol" class="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold focus:border-blue-500 outline-none">
+                    <option value="Edición">✏️ Edición (Crear y modificar)</option>
+                    <option value="Lectura">👁️ Lectura (Solo consulta)</option>
+                    <option value="Administrador">🛡️ Administrador (Acceso total)</option>
+                </select>
+            </div>
+            <div>
+                <button onclick="onAgregarUsuario()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-plus"></i> Guardar Usuario
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ====================================================
+     MODAL RECONFIGURADO "+ CHANGE" (5 CAMPOS OBLIGATORIOS)
+     ==================================================== -->
+<div id="modalChange" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-3 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[94vh] overflow-y-auto p-5 border border-slate-200">
+        <div class="flex justify-between items-center pb-3 border-b border-slate-200 mb-4">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center"><i class="fa-solid fa-file-pen"></i></div>
+                <div>
+                    <h3 id="modalTitulo" class="text-base font-black text-slate-800">+ Nueva Solicitud de Change</h3>
+                    <p id="modalSubtitulo" class="text-[11px] text-slate-500">Los 5 campos marcados con (*) son obligatorios</p>
+                </div>
+            </div>
+            <button onclick="fecharModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center text-lg"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <form id="formChange" onsubmit="salvarFormularioChange(event)" class="space-y-4">
+            <input type="hidden" id="spItemId">
+
+            <!-- BLOQUE PRINCIPAL: LOS 5 CAMPOS OBLIGATORIOS EXIGIDOS -->
+            <div class="p-4 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 border-2 border-blue-200 rounded-xl space-y-3 shadow-xs">
+                <div class="flex items-center justify-between pb-1 border-b border-blue-200">
+                    <span class="text-xs font-black text-blue-950 uppercase tracking-wide flex items-center gap-1.5">
+                        <i class="fa-solid fa-asterisk text-blue-600 text-[10px]"></i> Campos Principales Obligatorios
+                    </span>
+                    <span class="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">Requeridos para creación y edición</span>
+                </div>
+
+                <!-- 1. Solicitante, 2. Number, 3. Business Service -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-black text-slate-800 mb-1">1. Solicitante *</label>
+                        <input type="text" id="inpSolicitante" required placeholder="Nombre de quien solicita" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:border-blue-500 outline-none shadow-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black text-slate-800 mb-1">2. Number (Ticket Change) *</label>
+                        <input type="text" id="inpChange" required placeholder="CHG0012345" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-blue-700 focus:border-blue-500 outline-none shadow-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black text-slate-800 mb-1">3. Business Service *</label>
+                        <input type="text" id="inpBusinessService" required placeholder="E-Commerce, Supply Chain..." class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:border-blue-500 outline-none shadow-xs">
+                    </div>
+                </div>
+
+                <!-- 4. Short Description -->
+                <div>
+                    <label class="block text-xs font-black text-slate-800 mb-1">4. Short Description (Descripción / Resumen) *</label>
+                    <textarea id="inpDescricao" rows="2" required class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs focus:border-blue-500 outline-none shadow-xs" placeholder="Objetivo puntual y alcance de la solicitud..."></textarea>
+                </div>
+
+                <!-- 5. Assigned To + País + Producto -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-black text-slate-800 mb-1">5. Assigned To (Ingeniero Responsable) *</label>
+                        <input type="text" id="inpEngenheiro" required placeholder="Ingeniero / Analista asignado" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:border-blue-500 outline-none shadow-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black text-slate-800 mb-1">País *</label>
+                        <select id="inpPais" required class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:border-blue-500 outline-none shadow-xs">
+                            <!-- Se llena dinámicamente -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black text-slate-800 mb-1">Producto / Línea *</label>
+                        <input type="text" id="inpProduto" required placeholder="Nescafé, Purina, KitKat..." class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs focus:border-blue-500 outline-none shadow-xs">
+                    </div>
+                </div>
+            </div>
+
+            <!-- RITM opcional -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">RITM / Ticket Relacionado</label>
+                    <input type="text" id="inpRitm" placeholder="RITM0012345" class="w-full p-2 border border-slate-300 rounded-lg text-xs focus:border-blue-500 outline-none">
+                </div>
+            </div>
+
+            <!-- Pasos de Implementación -->
+            <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                    <div><h4 class="font-extrabold text-xs text-blue-800 flex items-center gap-1.5"><i class="fa-solid fa-list-ol"></i> Pasos de Implementación</h4><p class="text-[10px] text-slate-400">Horas y fecha tentativa calculan el total automáticamente.</p></div>
+                    <button type="button" id="btnAgregarPasoModal" onclick="agregarFilaPaso()" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shrink-0"><i class="fa-solid fa-plus"></i> Agregar Paso</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs table-pasos">
+                        <thead class="bg-slate-200 text-slate-700 font-bold uppercase text-[10px]"><tr><th class="p-1.5 w-1/4">Fase</th><th class="p-1.5">Acción</th><th class="p-1.5 w-16 text-center">Horas</th><th class="p-1.5 w-28">Fecha</th><th class="p-1.5 w-8"></th></tr></thead>
+                        <tbody id="tbodyPasosImplementacion" class="divide-y divide-slate-200 bg-white"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Horas + Clasificación -->
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="bg-white p-2.5 rounded-xl border border-slate-200">
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Total Horas Estimadas *</label>
+                        <input type="number" id="inpHorasEst" oninput="actualizarBadgeModal()" step="0.5" min="0" required value="0" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs font-black focus:border-blue-500 outline-none">
+                        <span id="badgeClassificacaoModal" class="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 mt-1">MEJORA (≤ 30h)</span>
+                    </div>
+                    <div class="bg-white p-2.5 rounded-xl border border-slate-200">
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Horas Aprobadas *</label>
+                        <input type="number" id="inpHorasApr" step="0.5" min="0" value="0" required class="w-full p-1.5 border border-slate-300 rounded-lg text-xs font-black text-blue-700 focus:border-blue-500 outline-none">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div><label class="block text-xs font-bold text-slate-700 mb-1">Entendimiento Técnico</label><textarea id="inpAnalise" rows="2" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs" placeholder="Solución técnica..."></textarea></div>
+                    <div><label class="block text-xs font-bold text-slate-700 mb-1">Plan de Rollback</label><textarea id="inpRollback" rows="2" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs" placeholder="Contingencia..."></textarea></div>
+                </div>
+            </div>
+
+            <!-- Aprobador -->
+            <div class="p-3 bg-amber-50/60 border border-amber-200 rounded-xl">
+                <h4 class="font-extrabold text-xs text-amber-900 mb-2"><i class="fa-solid fa-user-check mr-1"></i> Aprobación</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div><label class="block text-[11px] font-bold text-slate-700 mb-0.5">Aprobador</label><input type="text" id="inpAprovadorNome" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs"></div>
+                    <div><label class="block text-[11px] font-bold text-slate-700 mb-0.5">Email</label><input type="email" id="inpAprovadorEmail" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs"></div>
+                    <div><label class="block text-[11px] font-bold text-slate-700 mb-0.5">Estado</label><select id="inpStatusAprov" class="w-full p-1.5 border border-slate-300 rounded-lg text-xs font-bold"><option value="Pendente">Pendiente</option><option value="Aprovado">Aprobado</option><option value="Rejeitado">Rechazado</option></select></div>
+                </div>
+            </div>
+
+            <!-- Fechas de Fases -->
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <h4 class="font-extrabold text-xs text-slate-700 mb-2"><i class="fa-solid fa-calendar-days text-blue-600 mr-1"></i> Cronograma de Fases</h4>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">1. Abertura *</label><input type="date" id="d1" required class="w-full p-1 border rounded-lg text-xs"></div>
+                    <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">2. Reunião</label><input type="date" id="d2" class="w-full p-1 border rounded-lg text-xs"></div>
+                    <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">3. Análise</label><input type="date" id="d3" class="w-full p-1 border rounded-lg text-xs"></div>
+                    <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">4. Comitê</label><input type="date" id="d4" class="w-full p-1 border rounded-lg text-xs"></div>
+                    <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">5. Apresentação</label><input type="date" id="d5" class="w-full p-1 border rounded-lg text-xs"></div>
+                    <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">6. Aprovação</label><input type="date" id="d6" class="w-full p-1 border rounded-lg text-xs"></div>
+                    <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">7. Execução</label><input type="date" id="d7" class="w-full p-1 border rounded-lg text-xs"></div>
+                    <div><label class="block text-slate-500 font-semibold mb-0.5 text-[10px]">8. Conclusão</label><input type="date" id="d8" class="w-full p-1 border rounded-lg text-xs"></div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                <button type="button" onclick="fecharModal()" class="px-4 py-1.5 border border-slate-300 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50">Cerrar</button>
+                <button type="submit" id="btnGuardarModalChange" class="px-5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5"><i class="fa-solid fa-floppy-disk"></i> Guardar Change</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ====================================================
+     MODAL EXCEL
+     ==================================================== -->
+<div id="modalUploadExcel" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-3 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5 border border-slate-200">
+        <div class="flex justify-between items-center pb-3 border-b border-slate-200 mb-3">
+            <div class="flex items-center gap-2.5"><div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center"><i class="fa-solid fa-file-arrow-up"></i></div><div><h3 class="text-sm font-black text-slate-800">Cargar Excel</h3></div></div>
+            <button onclick="fecharModalUploadExcel()" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 flex items-center justify-center text-base"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="uploadDropzone" class="upload-dropzone mb-3 cursor-pointer" onclick="document.getElementById('inputExcelFile').click()">
+            <input type="file" id="inputExcelFile" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleExcelFileSelect(event)">
+            <i class="fa-solid fa-cloud-arrow-up text-3xl text-amber-400 mb-2"></i>
+            <h4 class="font-bold text-xs text-slate-700">Arrastra o selecciona archivo</h4>
+        </div>
+        <div class="flex justify-between items-center mb-3">
+            <button onclick="descargarPlantillaExcel()" class="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"><i class="fa-solid fa-download"></i> Plantilla</button>
+            <div class="flex items-center gap-3 text-xs font-semibold text-slate-700">
+                <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="modoImportacion" value="anexar" checked> Anexar</label>
+                <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="modoImportacion" value="reemplazar"> Reemplazar</label>
+            </div>
+        </div>
+        <div id="previewUploadContainer" class="hidden p-2.5 bg-slate-50 rounded-xl border border-slate-200 mb-3">
+            <span id="txtTotalImportar" class="font-bold text-xs text-slate-800 block mb-2">0 registros</span>
+            <div class="max-h-40 overflow-y-auto">
+                <table class="w-full text-left text-xs"><thead class="bg-slate-200 text-slate-600 font-bold text-[9px]"><tr><th class="p-1.5">Change</th><th class="p-1.5">Solicitante</th><th class="p-1.5">País</th><th class="p-1.5">Producto</th><th class="p-1.5 text-center">Horas</th></tr></thead>
+                <tbody id="tbodyPreviewExcel"></tbody></table>
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-200">
+            <button onclick="fecharModalUploadExcel()" class="px-4 py-1.5 border border-slate-300 text-slate-600 rounded-xl text-xs font-bold">Cancelar</button>
+            <button id="btnConfirmarImportacion" onclick="ejecutarImportacionExcel()" disabled class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-check"></i> Importar</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="config_paises.js"></script>
+<script src="sample_data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
